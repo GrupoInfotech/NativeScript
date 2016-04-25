@@ -7,6 +7,17 @@ import {View} from "ui/core/view";
 import {Observable} from "data/observable";
 import * as application from "application";
 import * as types from "utils/types";
+import {lazyExtend} from "utils/lazy";
+
+declare module com {
+    export module tns {
+        export class FragmentClass extends android.app.Fragment {
+            public frame: Frame;
+            public entry: definition.BackstackEntry;
+            public clearHistory: boolean;
+        }
+    }
+}
 
 global.moduleMerge(frameCommon, exports);
 
@@ -17,7 +28,7 @@ let navDepth = -1;
 let fragmentId = -1;
 let activityInitialized = false;
 
-function onFragmentShown(fragment: FragmentClass) {
+function onFragmentShown(fragment: com.tns.FragmentClass) {
     if (trace.enabled) {
         trace.write(`SHOWN ${fragment}`, trace.categories.NativeLifecycle);
     }
@@ -63,7 +74,7 @@ function onFragmentShown(fragment: FragmentClass) {
     transitionModule._onFragmentShown(fragment, isBack);
 }
 
-function onFragmentHidden(fragment: FragmentClass, destroyed: boolean) {
+function onFragmentHidden(fragment: com.tns.FragmentClass, destroyed: boolean) {
     if (trace.enabled) {
         trace.write(`HIDDEN ${fragment}; destroyed: ${destroyed}`, trace.categories.NativeLifecycle);
     }
@@ -135,10 +146,10 @@ export class Frame extends frameCommon.Frame {
         let manager = activity.getFragmentManager();
 
         // Current Fragment
-        var currentFragment: FragmentClass;
+        var currentFragment: com.tns.FragmentClass;
         if (this._currentEntry) {
             this._currentEntry.isNavigation = true;
-            currentFragment = <FragmentClass>manager.findFragmentByTag(this._currentEntry.fragmentTag);
+            currentFragment = <com.tns.FragmentClass>manager.findFragmentByTag(this._currentEntry.fragmentTag);
         }
 
         let clearHistory = backstackEntry.entry.clearHistory;
@@ -150,7 +161,7 @@ export class Frame extends frameCommon.Frame {
         navDepth++;
         fragmentId++;
         var newFragmentTag = `fragment${fragmentId}[${navDepth}]`;
-        let newFragment = new FragmentClass();
+        let newFragment = new com.tns.FragmentClass();
         let args = new android.os.Bundle();
         args.putInt(FRAMEID, this._android.frameId);
         newFragment.setArguments(args);
@@ -167,7 +178,7 @@ export class Frame extends frameCommon.Frame {
         let emptyNativeBackStack = clearHistory && length > 0; 
         if (emptyNativeBackStack) {
             for (let i = 0; i < length; i++) {
-                let fragmentToRemove = <FragmentClass>manager.findFragmentByTag(manager.getBackStackEntryAt(i).getName());
+                let fragmentToRemove = <com.tns.FragmentClass>manager.findFragmentByTag(manager.getBackStackEntryAt(i).getName());
                 Frame._clearHistory(fragmentToRemove);
             }
             if (currentFragment) {
@@ -253,7 +264,7 @@ export class Frame extends frameCommon.Frame {
         }
     }
 
-    private static _clearHistory(fragment: FragmentClass) {
+    private static _clearHistory(fragment: com.tns.FragmentClass) {
         if (trace.enabled) {
             trace.write(`CLEAR HISTORY FOR ${fragment}`, trace.categories.Navigation);
         }
@@ -587,303 +598,305 @@ function ensureAnimationFixed() {
     }
 }
 
-@JavaProxy("com.tns.FragmentClass")
-class FragmentClass extends android.app.Fragment {
-    public frame: Frame;
-    public entry: definition.BackstackEntry;
-    public clearHistory: boolean;
+lazyExtend("com.tns.FragmentClass",
+    class FragmentClass extends android.app.Fragment {
+        public frame: Frame;
+        public entry: definition.BackstackEntry;
+        public clearHistory: boolean;
 
-    constructor() {
-        super();
-        return global.__native(this);
-    }
-
-    public onHiddenChanged(hidden: boolean): void {
-        if (trace.enabled) {
-            trace.write(`${this}.onHiddenChanged(${hidden})`, trace.categories.NativeLifecycle);
-        }
-        super.onHiddenChanged(hidden);
-        if (hidden) {
-            onFragmentHidden(this, false);
-        }
-        else {
-            onFragmentShown(this);
-        }
-    }
-
-    public onCreateAnimator(transit: number, enter: boolean, nextAnim: number): android.animation.Animator {
-        var nextAnimString: string;
-        switch (nextAnim) {
-            case -10: nextAnimString = "enter"; break;
-            case -20: nextAnimString = "exit"; break;
-            case -30: nextAnimString = "popEnter"; break;
-            case -40: nextAnimString = "popExit"; break;
+        constructor() {
+            super();
+            return global.__native(this);
         }
 
-        var animator = transitionModule._onFragmentCreateAnimator(this, nextAnim);
-
-        if (!animator) {
-            animator = super.onCreateAnimator(transit, enter, nextAnim);
-        }
-
-        if (trace.enabled) {
-            trace.write(`${this}.onCreateAnimator(${transit}, ${enter ? "enter" : "exit"}, ${nextAnimString}): ${animator}`, trace.categories.NativeLifecycle);
-        }
-        return animator;
-    }
-
-    public onCreate(savedInstanceState: android.os.Bundle): void {
-        if (trace.enabled) {
-            trace.write(`${this}.onCreate(${savedInstanceState})`, trace.categories.NativeLifecycle);
-        }
-        super.onCreate(savedInstanceState);
-        super.setHasOptionsMenu(true);
-
-        // There is no entry set to the fragment, so this must be destroyed fragment that was recreated by Android.
-        // We should find its corresponding page in our backstack and set it manually.
-        if (!this.entry) {
-            let frameId = this.getArguments().getInt(FRAMEID);
-            let frame = getFrameById(frameId);
-            if (frame) {
-                this.frame = frame;
+        public onHiddenChanged(hidden: boolean): void {
+            if (trace.enabled) {
+                trace.write(`${this}.onHiddenChanged(${hidden})`, trace.categories.NativeLifecycle);
+            }
+            super.onHiddenChanged(hidden);
+            if (hidden) {
+                onFragmentHidden(this, false);
             }
             else {
-                throw new Error(`Cannot find Frame for ${this}`);
+                onFragmentShown(this);
+            }
+        }
+
+        public onCreateAnimator(transit: number, enter: boolean, nextAnim: number): android.animation.Animator {
+            var nextAnimString: string;
+            switch (nextAnim) {
+                case -10: nextAnimString = "enter"; break;
+                case -20: nextAnimString = "exit"; break;
+                case -30: nextAnimString = "popEnter"; break;
+                case -40: nextAnimString = "popExit"; break;
             }
 
-            findPageForFragment(this, this.frame);
-        }
-    }
+            var animator = transitionModule._onFragmentCreateAnimator(this, nextAnim);
 
-    public onCreateView(inflater: android.view.LayoutInflater, container: android.view.ViewGroup, savedInstanceState: android.os.Bundle): android.view.View {
-        if (trace.enabled) {
-            trace.write(`${this}.onCreateView(inflater, container, ${savedInstanceState})`, trace.categories.NativeLifecycle);
-        }
-        var entry = this.entry;
-        var page = entry.resolvedPage;
-        if (savedInstanceState && savedInstanceState.getBoolean(HIDDEN, false)) {
-            this.getFragmentManager().beginTransaction().hide(this).commit();
-            page._onAttached(this.getActivity());
-        }
-        else {
-            onFragmentShown(this);
-        }
-
-        return page._nativeView;
-    }
-
-    public onSaveInstanceState(outState: android.os.Bundle): void {
-        if (trace.enabled) {
-            trace.write(`${this}.onSaveInstanceState(${outState})`, trace.categories.NativeLifecycle);
-        }
-        super.onSaveInstanceState(outState);
-        if (this.isHidden()) {
-            outState.putBoolean(HIDDEN, true);
-        }
-    }
-
-    public onDestroyView(): void {
-        if (trace.enabled) {
-            trace.write(`${this}.onDestroyView()`, trace.categories.NativeLifecycle);
-        }
-        super.onDestroyView();
-        // Detaching the page has been move in onFragmentHidden due to transitions.
-        onFragmentHidden(this, true);
-    }
-
-    public onDestroy(): void {
-        if (trace.enabled) {
-            trace.write(`${this}.onDestroy()`, trace.categories.NativeLifecycle);
-        }
-        super.onDestroy();
-
-        this.entry.fragmentTag = undefined;
-    }
-
-    public toString(): string {
-        return `${this.getTag()}<${this.entry ? this.entry.resolvedPage : ""}>`;
-    }
-}
-
-@JavaProxy("com.tns.NativeScriptActivity")
-class NativeScriptActivity extends android.app.Activity {
-    private rootView: View;
-
-    constructor() {
-        super();
-        return global.__native(this);
-    }
-
-    protected onCreate(savedInstanceState: android.os.Bundle): void {
-        if (trace.enabled) {
-            trace.write(`NativeScriptActivity.onCreate(${savedInstanceState})`, trace.categories.NativeLifecycle);
-        }
-
-        let app = application.android;
-        let intent = this.getIntent();
-        if (application.onLaunch) {
-            application.onLaunch(intent);
-        }
-
-        let args: application.LaunchEventData = { eventName: application.launchEvent, object: app, android: intent };
-        application.notify(args);
-
-        let frameId = -1;
-        let rootView = args.root;
-        let extras = intent.getExtras();
-
-        // We have extras when we call - new Frame().navigate();
-        // savedInstanceState is used when activity is recreated.
-        if (extras) {
-            frameId = extras.getInt(INTENT_EXTRA, -1);
-        }
-        else if (savedInstanceState) {
-            frameId = savedInstanceState.getInt(INTENT_EXTRA, -1)
-        }
-
-        // If we have frameId from extras - we are starting a new activity from navigation (e.g. new Frame().navigate()))
-        // Then we check if we have frameId from savedInstanceState - this happens when Activity is destroyed but app was not (e.g. suspend)
-        // Only then we fallback to the view returned from the event. This is done in order to have backwards compatibility (remove it for 2.0.0).
-        let frame: Frame;
-        let navParam;
-        if (frameId >= 0) {
-            rootView = getFrameById(frameId);
-        }
-
-        if (!rootView) {
-            navParam = application.mainEntry;
-            if (!navParam) {
-                navParam = application.mainModule;
+            if (!animator) {
+                animator = super.onCreateAnimator(transit, enter, nextAnim);
             }
 
-            if (navParam) {
-                frame = new Frame();
-            } else {
-                // TODO: Throw an exception?
-                throw new Error("A Frame must be used to navigate to a Page.");
+            if (trace.enabled) {
+                trace.write(`${this}.onCreateAnimator(${transit}, ${enter ? "enter" : "exit"}, ${nextAnimString}): ${animator}`, trace.categories.NativeLifecycle);
+            }
+            return animator;
+        }
+
+        public onCreate(savedInstanceState: android.os.Bundle): void {
+            if (trace.enabled) {
+                trace.write(`${this}.onCreate(${savedInstanceState})`, trace.categories.NativeLifecycle);
+            }
+            super.onCreate(savedInstanceState);
+            super.setHasOptionsMenu(true);
+
+            // There is no entry set to the fragment, so this must be destroyed fragment that was recreated by Android.
+            // We should find its corresponding page in our backstack and set it manually.
+            if (!this.entry) {
+                let frameId = this.getArguments().getInt(FRAMEID);
+                let frame = getFrameById(frameId);
+                if (frame) {
+                    this.frame = frame;
+                }
+                else {
+                    throw new Error(`Cannot find Frame for ${this}`);
+                }
+
+                findPageForFragment(this, this.frame);
+            }
+        }
+
+        public onCreateView(inflater: android.view.LayoutInflater, container: android.view.ViewGroup, savedInstanceState: android.os.Bundle): android.view.View {
+            if (trace.enabled) {
+                trace.write(`${this}.onCreateView(inflater, container, ${savedInstanceState})`, trace.categories.NativeLifecycle);
+            }
+            var entry = this.entry;
+            var page = entry.resolvedPage;
+            if (savedInstanceState && savedInstanceState.getBoolean(HIDDEN, false)) {
+                this.getFragmentManager().beginTransaction().hide(this).commit();
+                page._onAttached(this.getActivity());
+            }
+            else {
+                onFragmentShown(this);
             }
 
-            rootView = frame;
+            return page._nativeView;
         }
 
-        // If there is savedInstanceState this call will recreate all fragments that were previously in the navigation.
-        // We take care of associating them with a Page from our backstack in the onAttachFragment callback.
-        // If there is savedInstanceState and activityInitialized is false we are restarted but process was killed.
-        // For now we treat it like first run (e.g. we are not passing savedInstanceState so no fragments are being restored).
-        // When we add support for application save/load state - revise this logic.
-        var isRestart = !!savedInstanceState && activityInitialized;
-        super.onCreate(isRestart ? savedInstanceState : null);
-
-        this.rootView = rootView;
-
-        // Initialize native visual tree;
-        rootView._onAttached(this);
-        this.setContentView(rootView._nativeView, new org.nativescript.widgets.CommonLayoutParams());
-        // frameId is negative w
-        if (frame) {
-            frame.navigate(navParam);
+        public onSaveInstanceState(outState: android.os.Bundle): void {
+            if (trace.enabled) {
+                trace.write(`${this}.onSaveInstanceState(${outState})`, trace.categories.NativeLifecycle);
+            }
+            super.onSaveInstanceState(outState);
+            if (this.isHidden()) {
+                outState.putBoolean(HIDDEN, true);
+            }
         }
 
-        activityInitialized = true;
-    }
-
-    protected onSaveInstanceState(outState: android.os.Bundle): void {
-        super.onSaveInstanceState(outState);
-        let view = this.rootView;
-        if (view instanceof Frame) {
-            outState.putInt(INTENT_EXTRA, view.android.frameId);
+        public onDestroyView(): void {
+            if (trace.enabled) {
+                trace.write(`${this}.onDestroyView()`, trace.categories.NativeLifecycle);
+            }
+            super.onDestroyView();
+            // Detaching the page has been move in onFragmentHidden due to transitions.
+            onFragmentHidden(this, true);
         }
-    }
 
-    protected onStart(): void {
-        super.onStart();
-        if (trace.enabled) {
-            trace.write("NativeScriptActivity.onStart();", trace.categories.NativeLifecycle);
+        public onDestroy(): void {
+            if (trace.enabled) {
+                trace.write(`${this}.onDestroy()`, trace.categories.NativeLifecycle);
+            }
+            super.onDestroy();
+
+            this.entry.fragmentTag = undefined;
         }
-        let rootView = this.rootView
-        if (rootView && !rootView.isLoaded) {
-            rootView.onLoaded();
+
+        public toString(): string {
+            return `${this.getTag()}<${this.entry ? this.entry.resolvedPage : ""}>`;
         }
     }
+);
 
-    protected onStop(): void {
-        super.onStop();
-        if (trace.enabled) {
-            trace.write("NativeScriptActivity.onStop();", trace.categories.NativeLifecycle);
+lazyExtend("com.tns.NativeScriptActivity",
+    class NativeScriptActivity extends android.app.Activity {
+        private rootView: View;
+
+        constructor() {
+            super();
+            return global.__native(this);
         }
-        let rootView = this.rootView
-        if (rootView && rootView.isLoaded) {
-            rootView.onUnloaded();
+
+        protected onCreate(savedInstanceState: android.os.Bundle): void {
+            if (trace.enabled) {
+                trace.write(`NativeScriptActivity.onCreate(${savedInstanceState})`, trace.categories.NativeLifecycle);
+            }
+
+            let app = application.android;
+            let intent = this.getIntent();
+            if (application.onLaunch) {
+                application.onLaunch(intent);
+            }
+
+            let args: application.LaunchEventData = { eventName: application.launchEvent, object: app, android: intent };
+            application.notify(args);
+
+            let frameId = -1;
+            let rootView = args.root;
+            let extras = intent.getExtras();
+
+            // We have extras when we call - new Frame().navigate();
+            // savedInstanceState is used when activity is recreated.
+            if (extras) {
+                frameId = extras.getInt(INTENT_EXTRA, -1);
+            }
+            else if (savedInstanceState) {
+                frameId = savedInstanceState.getInt(INTENT_EXTRA, -1)
+            }
+
+            // If we have frameId from extras - we are starting a new activity from navigation (e.g. new Frame().navigate()))
+            // Then we check if we have frameId from savedInstanceState - this happens when Activity is destroyed but app was not (e.g. suspend)
+            // Only then we fallback to the view returned from the event. This is done in order to have backwards compatibility (remove it for 2.0.0).
+            let frame: Frame;
+            let navParam;
+            if (frameId >= 0) {
+                rootView = getFrameById(frameId);
+            }
+
+            if (!rootView) {
+                navParam = application.mainEntry;
+                if (!navParam) {
+                    navParam = application.mainModule;
+                }
+
+                if (navParam) {
+                    frame = new Frame();
+                } else {
+                    // TODO: Throw an exception?
+                    throw new Error("A Frame must be used to navigate to a Page.");
+                }
+
+                rootView = frame;
+            }
+
+            // If there is savedInstanceState this call will recreate all fragments that were previously in the navigation.
+            // We take care of associating them with a Page from our backstack in the onAttachFragment callback.
+            // If there is savedInstanceState and activityInitialized is false we are restarted but process was killed.
+            // For now we treat it like first run (e.g. we are not passing savedInstanceState so no fragments are being restored).
+            // When we add support for application save/load state - revise this logic.
+            var isRestart = !!savedInstanceState && activityInitialized;
+            super.onCreate(isRestart ? savedInstanceState : null);
+
+            this.rootView = rootView;
+
+            // Initialize native visual tree;
+            rootView._onAttached(this);
+            this.setContentView(rootView._nativeView, new org.nativescript.widgets.CommonLayoutParams());
+            // frameId is negative w
+            if (frame) {
+                frame.navigate(navParam);
+            }
+
+            activityInitialized = true;
+        }
+
+        protected onSaveInstanceState(outState: android.os.Bundle): void {
+            super.onSaveInstanceState(outState);
+            let view = this.rootView;
+            if (view instanceof Frame) {
+                outState.putInt(INTENT_EXTRA, view.android.frameId);
+            }
+        }
+
+        protected onStart(): void {
+            super.onStart();
+            if (trace.enabled) {
+                trace.write("NativeScriptActivity.onStart();", trace.categories.NativeLifecycle);
+            }
+            let rootView = this.rootView
+            if (rootView && !rootView.isLoaded) {
+                rootView.onLoaded();
+            }
+        }
+
+        protected onStop(): void {
+            super.onStop();
+            if (trace.enabled) {
+                trace.write("NativeScriptActivity.onStop();", trace.categories.NativeLifecycle);
+            }
+            let rootView = this.rootView
+            if (rootView && rootView.isLoaded) {
+                rootView.onUnloaded();
+            }
+        }
+
+        protected onDestroy(): void {
+            let rootView = this.rootView
+            if (rootView && rootView._context) {
+                rootView._onDetached(true);
+            }
+
+            super.onDestroy();
+            if (trace.enabled) {
+                trace.write("NativeScriptActivity.onDestroy();", trace.categories.NativeLifecycle);
+            }
+        }
+
+        public onBackPressed(): void {
+            if (trace.enabled) {
+                trace.write("NativeScriptActivity.onBackPressed;", trace.categories.NativeLifecycle);
+            }
+
+            var args = <application.AndroidActivityBackPressedEventData>{
+                eventName: "activityBackPressed",
+                object: application.android,
+                activity: this,
+                cancel: false,
+            };
+            application.android.notify(args);
+
+            if (args.cancel) {
+                return;
+            }
+
+            if (!frameCommon.goBack()) {
+                super.onBackPressed();
+            }
+        }
+
+        public onRequestPermissionsResult (requestCode: number, permissions: Array<String>, grantResults: Array<number>): void {
+            if (trace.enabled) {
+                trace.write("NativeScriptActivity.onRequestPermissionsResult;", trace.categories.NativeLifecycle);
+            }
+
+            application.android.notify(<application.AndroidActivityRequestPermissionsEventData>{
+                eventName: "activityRequestPermissions",
+                object: application.android,
+                activity: this,
+                requestCode: requestCode,
+                permissions: permissions,
+                grantResults: grantResults
+            });
+        }
+
+        protected onActivityResult(requestCode: number, resultCode: number, data: android.content.Intent): void {
+            super.onActivityResult(requestCode, resultCode, data);
+            if (trace.enabled) {
+                trace.write(`NativeScriptActivity.onActivityResult(${requestCode}, ${resultCode}, ${data})`, trace.categories.NativeLifecycle);
+            }
+
+            var result = application.android.onActivityResult;
+            if (result) {
+                result(requestCode, resultCode, data);
+            }
+
+            application.android.notify(<application.AndroidActivityResultEventData>{
+                eventName: "activityResult",
+                object: application.android,
+                activity: this,
+                requestCode: requestCode,
+                resultCode: resultCode,
+                intent: data
+            });
         }
     }
-
-    protected onDestroy(): void {
-        let rootView = this.rootView
-        if (rootView && rootView._context) {
-            rootView._onDetached(true);
-        }
-
-        super.onDestroy();
-        if (trace.enabled) {
-            trace.write("NativeScriptActivity.onDestroy();", trace.categories.NativeLifecycle);
-        }
-    }
-
-    public onBackPressed(): void {
-        if (trace.enabled) {
-            trace.write("NativeScriptActivity.onBackPressed;", trace.categories.NativeLifecycle);
-        }
-
-        var args = <application.AndroidActivityBackPressedEventData>{
-            eventName: "activityBackPressed",
-            object: application.android,
-            activity: this,
-            cancel: false,
-        };
-        application.android.notify(args);
-
-        if (args.cancel) {
-            return;
-        }
-
-        if (!frameCommon.goBack()) {
-            super.onBackPressed();
-        }
-    }
-
-    public onRequestPermissionsResult (requestCode: number, permissions: Array<String>, grantResults: Array<number>): void {
-        if (trace.enabled) {
-            trace.write("NativeScriptActivity.onRequestPermissionsResult;", trace.categories.NativeLifecycle);
-        }
-
-        application.android.notify(<application.AndroidActivityRequestPermissionsEventData>{
-            eventName: "activityRequestPermissions",
-            object: application.android,
-            activity: this,
-            requestCode: requestCode,
-            permissions: permissions,
-            grantResults: grantResults
-        });
-    }
-
-    protected onActivityResult(requestCode: number, resultCode: number, data: android.content.Intent): void {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (trace.enabled) {
-            trace.write(`NativeScriptActivity.onActivityResult(${requestCode}, ${resultCode}, ${data})`, trace.categories.NativeLifecycle);
-        }
-
-        var result = application.android.onActivityResult;
-        if (result) {
-            result(requestCode, resultCode, data);
-        }
-
-        application.android.notify(<application.AndroidActivityResultEventData>{
-            eventName: "activityResult",
-            object: application.android,
-            activity: this,
-            requestCode: requestCode,
-            resultCode: resultCode,
-            intent: data
-        });
-    }
-}
+);
